@@ -9,8 +9,19 @@ tense keep-rolling-or-bank decisions.
 - [TypeScript](https://www.typescriptlang.org/) — strict mode
 - [Vitest](https://vitest.dev/) — test runner
 
-No framework yet: the game engine is pure TypeScript (`src/engine/`), and the
-UI layer stays thin until the core loop is proven.
+No framework: the game engine is pure TypeScript (`src/engine/`), the game
+flow is a headless controller (`src/ui/app.ts`), and the DOM layer
+(`src/main.ts`) is a render-from-state view — so the whole game is testable
+without a browser.
+
+## How to play
+
+You vs. the AI, first to bank 2,000 points. Roll six dice, click the scoring
+dice you want to keep (1s = 100, 5s = 50, three of a kind = face × 100, three
+1s = 1,000), then **bank** your turn total or **roll again** with the rest. A
+roll with no scoring dice is a bust: unbanked points are gone. Keep all six as
+scorers and they come back (*hot dice*). When someone banks 2,000+, the
+opponent gets one final turn to beat them.
 
 ## Getting started
 
@@ -34,9 +45,11 @@ npm run preview      # serve the production build locally
 
 ```
 index.html            Vite entry point
-src/main.ts           UI bootstrap (thin — no game rules here)
+src/main.ts           DOM view: renders ui/app.ts state, forwards clicks
+src/style.css         All styling (no framework)
+src/ui/               Headless game-flow controller + selection helpers
 src/engine/           Pure game logic. Fully unit-tested. No DOM imports.
-src/engine/*.test.ts  Tests live next to the code they cover.
+src/**/*.test.ts      Tests live next to the code they cover.
 .github/workflows/    CI: npm ci, test, build on every push/PR.
 ```
 
