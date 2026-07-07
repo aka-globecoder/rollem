@@ -49,6 +49,42 @@ export function isBust(roll: readonly number[]): boolean {
   return maxRollScore(roll) === 0;
 }
 
+/** Most dice a player can roll at once (six d6). */
+const MAX_DICE = 6;
+
+/**
+ * Exact probability that a fresh roll of `dice` dice busts (contains no scoring
+ * dice), precomputed by full enumeration over 6^n outcomes. Surfaced in the UI
+ * so the bank-or-roll decision shows real risk, not just a vibe (DESIGN.md §7:
+ * "bust risk visible").
+ */
+const BUST_PROBABILITY: readonly number[] = (() => {
+  const table = [0]; // index 0 (no dice) is unused
+  for (let n = 1; n <= MAX_DICE; n++) {
+    const total = 6 ** n;
+    const faces = new Array(n).fill(1);
+    let busts = 0;
+    for (let i = 0; i < total; i++) {
+      if (isBust(faces)) busts++;
+      // Advance a mixed-radix (base 6) counter across the n dice.
+      for (let k = 0; k < n; k++) {
+        if (faces[k] < 6) {
+          faces[k]++;
+          break;
+        }
+        faces[k] = 1;
+      }
+    }
+    table.push(busts / total);
+  }
+  return table;
+})();
+
+/** Probability a fresh roll of `dice` dice busts. 0 for out-of-range inputs. */
+export function bustProbability(dice: number): number {
+  return BUST_PROBABILITY[dice] ?? 0;
+}
+
 /**
  * Indices of every die in the roll that can legally be part of a set-aside:
  * all 1s and 5s, plus exactly three dice of any other face appearing 3+ times

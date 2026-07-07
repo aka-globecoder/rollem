@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isBust, maxRollScore, scoreSelection, scoringDiceIndices, tripleValue } from './scoring';
+import {
+  bustProbability,
+  isBust,
+  maxRollScore,
+  scoreSelection,
+  scoringDiceIndices,
+  tripleValue,
+} from './scoring';
 
 describe('scoreSelection — the §3 scoring table', () => {
   it('scores a single 1 as 100 and a single 5 as 50', () => {
@@ -91,5 +98,36 @@ describe('scoringDiceIndices — which dice may be set aside', () => {
   });
   it('never truncates 1s and 5s (their leftovers still score as singles)', () => {
     expect(scoringDiceIndices([5, 5, 5, 5, 5, 5])).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+});
+
+describe('bustProbability — risk shown at the bank-or-roll prompt (§7)', () => {
+  it('matches exact enumeration for the anchor cases', () => {
+    // 1 die: busts on 2,3,4,6 → 4/6.
+    expect(bustProbability(1)).toBeCloseTo(4 / 6, 10);
+    // 2 dice: no triples possible, so bust = both non-1/5 → (4/6)^2 = 16/36.
+    expect(bustProbability(2)).toBeCloseTo(16 / 36, 10);
+    // 3 dice: all four faces from {2,3,4,6} (64) minus the 4 triples, over 216.
+    expect(bustProbability(3)).toBeCloseTo(60 / 216, 10);
+  });
+
+  it('strictly decreases as more dice are in hand (more dice, safer roll)', () => {
+    for (let n = 2; n <= 6; n++) {
+      expect(bustProbability(n)).toBeLessThan(bustProbability(n - 1));
+    }
+  });
+
+  it('agrees with isBust over a full enumeration for 4 dice', () => {
+    let busts = 0;
+    for (let a = 1; a <= 6; a++)
+      for (let b = 1; b <= 6; b++)
+        for (let c = 1; c <= 6; c++)
+          for (let d = 1; d <= 6; d++) if (isBust([a, b, c, d])) busts++;
+    expect(bustProbability(4)).toBeCloseTo(busts / 6 ** 4, 10);
+  });
+
+  it('returns 0 for out-of-range dice counts', () => {
+    expect(bustProbability(0)).toBe(0);
+    expect(bustProbability(7)).toBe(0);
   });
 });

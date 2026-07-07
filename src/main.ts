@@ -4,6 +4,7 @@
  */
 import './style.css';
 import { isHotDice } from './engine/game';
+import { bustProbability } from './engine/scoring';
 import { AI, App, HUMAN } from './ui/app';
 import { isDieSelectable, selectionPoints } from './ui/selection';
 
@@ -103,7 +104,7 @@ function diceArea(): string {
     </div>
     <p class="hint">${
       canBank
-        ? `Banking keeps your ${fmt(game.turnTotal)} points safe. Rolling risks them all on ${game.diceInHand} dice.`
+        ? `Banking keeps your ${fmt(game.turnTotal)} points safe. Rolling ${game.diceInHand} ${game.diceInHand === 1 ? 'die' : 'dice'} busts about ${Math.round(bustProbability(game.diceInHand) * 100)}% of the time.`
         : 'Roll all six dice to start your turn.'
     }</p>`;
 }
