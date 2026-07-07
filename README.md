@@ -35,10 +35,28 @@ npm run preview      # serve the production build locally
 ```
 index.html            Vite entry point
 src/main.ts           UI bootstrap (thin — no game rules here)
-src/engine/           Pure game logic: dice, rules, scoring. Fully unit-tested.
+src/engine/           Pure game logic. Fully unit-tested. No DOM imports.
 src/engine/*.test.ts  Tests live next to the code they cover.
 .github/workflows/    CI: npm ci, test, build on every push/PR.
 ```
+
+### Engine modules (`src/engine/`)
+
+The rules implemented here are exactly those in the project design doc
+(`DESIGN.md`, one level above this repo).
+
+| Module        | Responsibility                                                        |
+|---------------|-----------------------------------------------------------------------|
+| `dice.ts`     | Die/dice rolling with an injectable `Rng`                             |
+| `rng.ts`      | `mulberry32` seedable PRNG for tests and reproducible simulations     |
+| `scoring.ts`  | Scoring table, bust detection, set-aside legality (§3)                |
+| `game.ts`     | Turn/state machine: roll → set aside → bank-or-roll, hot dice, endgame, tie-break (§2, §4) |
+| `ai.ts`       | Deterministic opponent: greedy set-aside + ordered bank-or-roll heuristics (§5) |
+| `simulate.ts` | Plays complete seeded AI-vs-AI games engine-only                      |
+
+Typical flow: `newGame()` → `roll(state, rng)` → `setAside(state, indices)` →
+`bank(state)` or `roll` again. All actions are pure (state in, new state out)
+and throw on illegal moves, so the UI can lean on the engine for validation.
 
 ## Engineering conventions
 
