@@ -5,6 +5,7 @@
  */
 import './style.css';
 import { pot, type HandState } from './engine/hand';
+import { CATEGORY_LABEL, HandCategory } from './engine/handEval';
 import { AI, HUMAN, TableGame } from './ui/table';
 
 const DIE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -16,25 +17,58 @@ const ACTION_LABEL: Record<string, string> = {
   raise: 'Raise',
 };
 
+// Weakest → strongest (inverted from standard poker — rarer beats common)
+const RANKING: HandCategory[] = [
+  HandCategory.FullHouse,
+  HandCategory.TwoPairs,
+  HandCategory.ThreePairs,
+  HandCategory.FiveStraight,
+  HandCategory.Trips,
+  HandCategory.SixStraight,
+  HandCategory.BigFull,
+  HandCategory.FourOfAKind,
+  HandCategory.FourPlusPair,
+  HandCategory.DoubleTrips,
+  HandCategory.FiveOfAKind,
+  HandCategory.FourPlusTrips,
+  HandCategory.FivePlusPair,
+  HandCategory.SixOfAKind,
+  HandCategory.SevenOfAKind,
+];
+
 const game = new TableGame();
 const root = document.querySelector<HTMLDivElement>('#app')!;
+
+// Track previously revealed count so we can animate only newly revealed dice.
+let lastRevealed = 0;
+let lastRevealAi = false;
 
 /** Fixed-limit bet/raise increment for the street (DESIGN.md §3), for labels. */
 function increment(hand: HandState): number {
   return hand.street === 'turn' || hand.street === 'river' ? 2 * hand.bigBlind : hand.bigBlind;
 }
 
-function die(face: number | null, opts: { hidden?: boolean } = {}): string {
+function die(
+  face: number | null,
+  opts: { hidden?: boolean; isNew?: boolean; newIdx?: number } = {},
+): string {
   if (opts.hidden) return `<span class="die back" aria-label="hidden die">?</span>`;
   if (face === null) return `<span class="die empty" aria-hidden="true"></span>`;
-  return `<span class="die" aria-label="die showing ${face}">${DIE_FACES[face - 1]}</span>`;
+  const cls = opts.isNew ? 'die new' : 'die';
+  const delay =
+    opts.isNew && opts.newIdx !== undefined ? ` style="animation-delay:${opts.newIdx * 90}ms"` : '';
+  return `<span class="${cls}"${delay} aria-label="die showing ${face}">${DIE_FACES[face - 1]}</span>`;
 }
 
 function holeDice(seat: number): string {
   const { hand, revealAi } = game.state;
   const hidden = seat === AI && !revealAi;
-  const dice = hand.players[seat].hole.map((f) => die(hidden ? null : f, { hidden })).join('');
-  return `<div class="dice hole">${dice}</div>`;
+  const isNewReveal = seat === AI && revealAi && !lastRevealAi;
+  const dice = hand.players[seat].hole
+    .map((f, idx) => die(hidden ? null : f, { hidden, isNew: isNewReveal, newIdx: idx }))
+    .join('');
+  const label = seat === HUMAN ? 'Your dice' : 'AI dice';
+  return `<div class="dice hole"><span class="hole-label">${label}</span>${dice}</div>`;
 }
 
 function playerPanel(seat: number): string {
@@ -46,6 +80,11 @@ function playerPanel(seat: number): string {
   const committed = p.committed > 0 ? `<span class="committed">bet ${p.committed}</span>` : '';
   const flags = [
     isButton ? '<span class="tag button-tag" title="Dealer button / small blind">BTN</span>' : '',
+    active && seat === HUMAN
+      ? '<span class="tag turn-badge">Your turn</span>'
+      : active
+        ? '<span class="tag turn-ai">AI thinking</span>'
+        : '',
     p.folded ? '<span class="tag folded">folded</span>' : '',
     p.allIn ? '<span class="tag allin">all-in</span>' : '',
   ].join('');
@@ -62,10 +101,17 @@ function playerPanel(seat: number): string {
 
 function boardRow(): string {
   const { hand } = game.state;
+  // Detect hand reset: revealed count going backward means a new hand was dealt.
+  const isNewHand = hand.revealed < lastRevealed;
   const slots: string[] = [];
   for (let i = 0; i < 5; i++) {
-    if (i < hand.revealed) slots.push(die(hand.boardFull[i]));
-    else slots.push(die(null, { hidden: true }));
+    if (i < hand.revealed) {
+      const isNew = !isNewHand && i >= lastRevealed;
+      const newIdx = isNew ? i - lastRevealed : 0;
+      slots.push(die(hand.boardFull[i], { isNew, newIdx }));
+    } else {
+      slots.push(die(null, { hidden: true }));
+    }
   }
   const label = hand.street === 'complete' ? 'Board' : streetLabel(hand);
   return `
@@ -89,6 +135,32 @@ function streetLabel(hand: HandState): string {
     default:
       return 'Board';
   }
+}
+
+function showdownPanel(): string {
+  const { hand } = game.state;
+  if (hand.street !== 'complete' || !hand.result || hand.result.reason !== 'showdown') return '';
+  const [va, vb] = hand.result.handValues!;
+  const winners = hand.result.winners;
+  const isSplit = winners.length === 2;
+  const humanWins = !isSplit && winners[0] === HUMAN;
+  const verdict = isSplit ? 'Split pot' : humanWins ? 'You win!' : 'AI wins';
+  const cls = isSplit ? 'split' : humanWins ? 'win' : 'loss';
+  return `
+    <div class="showdown-panel ${cls}">
+      <div class="showdown-verdict">${verdict} &middot; ${hand.result.potAwarded} chips</div>
+      <div class="showdown-hands">
+        <div class="showdown-hand${humanWins ? ' winner' : ''}">
+          <span class="sh-label">You</span>
+          <span class="sh-cat">${CATEGORY_LABEL[va.category]}</span>
+        </div>
+        <span class="showdown-vs">vs</span>
+        <div class="showdown-hand${!humanWins && !isSplit ? ' winner' : ''}">
+          <span class="sh-label">AI</span>
+          <span class="sh-cat">${CATEGORY_LABEL[vb.category]}</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 function controls(): string {
@@ -126,29 +198,48 @@ function controls(): string {
   return `<div class="actions">${buttons}</div>`;
 }
 
+function rankingRows(): string {
+  return RANKING.map((cat, i) => {
+    const isWeak = i === 0;
+    const isStrong = i === RANKING.length - 1;
+    const badge = isWeak
+      ? '<span class="rank-badge weak">weakest</span>'
+      : isStrong
+        ? '<span class="rank-badge strong">strongest</span>'
+        : '';
+    return `<tr><td class="rank-n">${i + 1}</td><td>${CATEGORY_LABEL[cat]}</td><td>${badge}</td></tr>`;
+  }).join('');
+}
+
 function render(): void {
   const { message, log, match } = game.state;
   root.innerHTML = `
     <main class="game">
       <h1>Roll'Em</h1>
-      <p class="subtitle">Heads-up dice poker · blinds ${match.smallBlind}/${match.bigBlind} · hand ${match.handsPlayed + 1}</p>
+      <p class="subtitle">Heads-up dice poker &middot; blinds ${match.smallBlind}/${match.bigBlind} &middot; hand ${match.handsPlayed + 1}</p>
+      <p class="invert-hint">Rarer combos win &mdash; <em>Full House is weakest</em>, Seven of a Kind is best</p>
       ${playerPanel(AI)}
       ${boardRow()}
       ${playerPanel(HUMAN)}
+      ${showdownPanel()}
       <p class="message">${message}</p>
       ${controls()}
       <details class="log"><summary>Hand log</summary><ul>${log.map((l) => `<li>${l}</li>`).join('')}</ul></details>
       <details class="rules">
-        <summary>How to play</summary>
-        <p>Texas hold'em with dice. You hold <strong>2 hidden dice</strong>; five shared
-        <strong>board dice</strong> come out across the flop, turn and river. Bet across four rounds
-        on who makes the best seven-dice combination.</p>
-        <p><strong>The twist — rankings invert:</strong> rarer shapes win. A Full House is the
-        <em>weakest</em> payable hand; Two Pairs beats it, Trips beat a straight, and so on up to
-        Seven of a Kind.</p>
-        <p>Win the AI's whole stack to take the match.</p>
+        <summary>How to play &amp; rankings</summary>
+        <p>Texas hold'em with dice. You hold <strong>2 private dice</strong>; five shared
+        <strong>board dice</strong> come out flop&rarr;turn&rarr;river. Four rounds of fixed-limit betting.</p>
+        <p><strong>Rankings are inverted</strong> &mdash; rarer shapes beat common ones:</p>
+        <table class="rank-table">
+          <thead><tr><th>#</th><th>Hand</th><th></th></tr></thead>
+          <tbody>${rankingRows()}</tbody>
+        </table>
       </details>
     </main>`;
+
+  // Update tracking state AFTER DOM is written so boardRow() used the previous values.
+  lastRevealed = game.state.hand.revealed;
+  lastRevealAi = game.state.revealAi;
 }
 
 root.addEventListener('click', (event) => {
