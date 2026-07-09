@@ -89,6 +89,34 @@ h1 {
   font-size: 0.85rem;
 }
 
+/* "What you currently have" readout under the hole dice (Winamax-style). */
+.current-hand {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 2px solid var(--muted);
+  border-radius: 0.3rem;
+}
+.current-hand.final {
+  border-left-color: var(--accent);
+  background: rgba(228, 184, 76, 0.08);
+}
+.current-hand .ch-lead {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.current-hand .ch-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+.current-hand.final .ch-label { color: var(--accent); }
+
 .tag {
   font-size: 0.65rem;
   font-weight: 700;

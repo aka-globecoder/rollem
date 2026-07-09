@@ -6,6 +6,7 @@
 import './style.css';
 import { pot, type HandState } from './engine/hand';
 import { CATEGORY_LABEL, HandCategory } from './engine/handEval';
+import { describeCurrentHand } from './ui/currentHand';
 import { AI, HUMAN, TableGame } from './ui/table';
 
 const DIE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
@@ -71,6 +72,22 @@ function holeDice(seat: number): string {
   return `<div class="dice hole"><span class="hole-label">${label}</span>${dice}</div>`;
 }
 
+/**
+ * "What you currently have" readout (Winamax-style): the best shape made from a
+ * seat's visible dice — its 2 hole dice plus the revealed board — updated every
+ * street. Shown for the human always; for the AI only once its dice are face-up.
+ */
+function currentHandRow(seat: number): string {
+  const { hand, revealAi } = game.state;
+  const p = hand.players[seat];
+  if (p.folded) return '';
+  if (seat === AI && !revealAi) return '';
+  const visible = [...p.hole, ...hand.boardFull.slice(0, hand.revealed)];
+  const { label, final } = describeCurrentHand(visible);
+  const lead = final ? 'Hand' : 'So far';
+  return `<div class="current-hand ${final ? 'final' : ''}"><span class="ch-lead">${lead}</span><span class="ch-label">${label}</span></div>`;
+}
+
 function playerPanel(seat: number): string {
   const { hand } = game.state;
   const p = hand.players[seat];
@@ -95,6 +112,7 @@ function playerPanel(seat: number): string {
         <span class="stack">${p.stack} <small>chips</small></span>
       </div>
       ${holeDice(seat)}
+      ${currentHandRow(seat)}
       ${committed}
     </div>`;
 }
