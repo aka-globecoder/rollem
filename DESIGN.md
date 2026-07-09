@@ -133,6 +133,13 @@ Notes for the engine:
   fixed design choice (quad-based hands above the full-house-based Big Full, the
   paired quad highest); ties between two *players* both holding one of these are
   broken by §6, never by category.
+- **Full House sits below Two Pairs by the same overlap mechanism.** At the raw
+  count-shape level the two are exactly tied (`3,2,1,1` and `2,2,1,1,1` each occur
+  75,600 times). The two-pair shape spans 5 distinct faces, so 25,200 of those
+  hands also contain a 5-run and are promoted to 5-Straight (75,600 − 25,200 =
+  50,400 = 18.004%). The full-house shape spans only 4 distinct faces and can
+  never contain a straight, so all 75,600 (27.006%) remain — making Full House
+  strictly more common, hence weaker. Verified by exhaustive enumeration (ROL-13).
 - "Straight" = the faces are present among the 7 dice; a hand's straight length
   is the longest such run. A hand containing 1-2-3-4-5-6 is a 6-Straight (rank 6),
   never scored as a lower straight.
