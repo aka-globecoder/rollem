@@ -27,6 +27,17 @@ describe('evaluateHand — category classification', () => {
     expect(cat([1, 2, 3, 4, 5, 1, 1])).toBe(HandCategory.Trips); // 1..5 run but trips of 1 outrank it
   });
 
+  it('a Full House is never scored as the Two Pairs it visually contains (ROL-13)', () => {
+    // 333 + 22 physically contains a pair of 3s and a pair of 2s, yet all seven
+    // dice must fit ONE shape: the third 3 is not a "single", so the hand is the
+    // exact shape 3+2+1+1 (Full House), never 2+2+1+1+1 (Two Pairs). Categories
+    // are disjoint 7-dice shapes; there is no sub-selecting four dice.
+    expect(cat([3, 3, 3, 2, 2, 5, 6])).toBe(HandCategory.FullHouse);
+    expect(cat([3, 3, 3, 2, 2, 1, 4])).toBe(HandCategory.FullHouse);
+    // ...whereas dropping the third 3 to a distinct face IS a Two Pairs.
+    expect(cat([3, 3, 2, 2, 5, 6, 1])).toBe(HandCategory.TwoPairs);
+  });
+
   it('rejects malformed hands', () => {
     expect(() => evaluateHand([1, 2, 3])).toThrow();
     expect(() => evaluateHand([1, 2, 3, 4, 5, 6, 7])).toThrow();

@@ -93,6 +93,15 @@ is no "pick best five" — every one of the seven dice counts toward the pattern
 exactly as the category definitions in §5 describe (e.g. "Trips = exactly three
 of a kind **plus four other dice** that don't form another pair or trip").
 
+Because all seven dice must fit one pattern, the categories are **disjoint
+count-shapes**, not nested containers. A Full House `3·3·3·2·2·x·y` visually
+"contains" a pair of 3s and a pair of 2s, but it is *not* a Two Pairs: Two Pairs
+is defined as *exactly two pairs + three singles* (shape 2+2+1+1+1, five distinct
+faces), and here the third 3 is not a single. You cannot drop a die to expose the
+two-pair inside — every die counts, so the hand is the shape 3+2+1+1 and nothing
+else. (Straights are the sole exception that can co-occur with a count-shape, and
+§5's "higher rank wins" note governs only that overlap.)
+
 Both players share the same 5 board dice, so a hand is only as private as the two
 dice behind your screen. Position and betting tells are the read.
 
