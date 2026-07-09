@@ -1,0 +1,52 @@
+name: Deploy to GitHub Pages
+
+# The live preview (https://aka-globecoder.github.io/rollem/) is published from
+# this workflow. CI (ci.yml) only tests/builds; nothing published before, which
+# is why the preview 404'd. This builds on every push to main and deploys the
+# static bundle via the official GitHub Pages Actions pipeline.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Permissions the deploy-pages action needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Never run two deploys at once; let an in-flight one finish being superseded.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      # enablement: true turns Pages on and points it at Actions if it isn't
+      # already, so a fresh repo doesn't need a manual Settings toggle.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
