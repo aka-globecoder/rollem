@@ -155,6 +155,27 @@ function streetLabel(hand: HandState): string {
   }
 }
 
+/**
+ * The seven dice a seat actually scored, sorted ascending so repeated faces sit
+ * adjacent and the shape reads at a glance (five identical faces = Five of a
+ * Kind). The 2 private dice keep an accent ring; the 5 shared board dice stay
+ * neutral, so it's visible that both players build off the same board.
+ */
+function showdownDice(seat: number): string {
+  const { hand } = game.state;
+  const items = [
+    ...hand.players[seat].hole.map((f) => ({ f, hole: true })),
+    ...hand.boardFull.map((f) => ({ f, hole: false })),
+  ].sort((a, b) => a.f - b.f);
+  const dice = items
+    .map(
+      (d) =>
+        `<span class="mini-die${d.hole ? ' hole' : ''}" aria-label="die showing ${d.f}">${DIE_FACES[d.f - 1]}</span>`,
+    )
+    .join('');
+  return `<div class="sh-dice">${dice}</div>`;
+}
+
 function showdownPanel(): string {
   const { hand } = game.state;
   if (hand.street !== 'complete' || !hand.result || hand.result.reason !== 'showdown') return '';
@@ -168,16 +189,19 @@ function showdownPanel(): string {
     <div class="showdown-panel ${cls}">
       <div class="showdown-verdict">${verdict} &middot; ${hand.result.potAwarded} chips</div>
       <div class="showdown-hands">
-        <div class="showdown-hand${humanWins ? ' winner' : ''}">
+        <div class="showdown-hand${humanWins || isSplit ? ' winner' : ''}">
           <span class="sh-label">You</span>
           <span class="sh-cat">${CATEGORY_LABEL[va.category]}</span>
+          ${showdownDice(HUMAN)}
         </div>
         <span class="showdown-vs">vs</span>
-        <div class="showdown-hand${!humanWins && !isSplit ? ' winner' : ''}">
+        <div class="showdown-hand${(!humanWins && !isSplit) || isSplit ? ' winner' : ''}">
           <span class="sh-label">AI</span>
           <span class="sh-cat">${CATEGORY_LABEL[vb.category]}</span>
+          ${showdownDice(AI)}
         </div>
       </div>
+      <p class="sh-hint">Ringed dice are private &middot; the other five are the shared board</p>
     </div>`;
 }
 
