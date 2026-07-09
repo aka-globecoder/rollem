@@ -1,162 +1,172 @@
 /**
- * DOM view for Roll'Em. All game flow lives in ui/app.ts; this file only
- * renders `app.state` and forwards clicks via data-action attributes.
+ * DOM view for Roll'Em dice poker. All game flow lives in ui/table.ts; this
+ * file only renders `game.state` and forwards clicks via data-action attributes
+ * (DESIGN.md §3 table layout, §8 AI pacing).
  */
 import './style.css';
-import { isHotDice } from './engine/game';
-import { bustProbability } from './engine/scoring';
-import { AI, App, HUMAN } from './ui/app';
-import { isDieSelectable, selectionPoints } from './ui/selection';
+import { pot, type HandState } from './engine/hand';
+import { AI, HUMAN, TableGame } from './ui/table';
 
 const DIE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
-const fmt = (n: number): string => n.toLocaleString('en-US');
+const ACTION_LABEL: Record<string, string> = {
+  fold: 'Fold',
+  check: 'Check',
+  call: 'Call',
+  bet: 'Bet',
+  raise: 'Raise',
+};
 
-const app = new App();
+const game = new TableGame();
 const root = document.querySelector<HTMLDivElement>('#app')!;
 
-function die(face: number, opts: { index?: number; selected?: boolean; disabled?: boolean; bust?: boolean } = {}): string {
-  const classes = ['die'];
-  if (opts.selected) classes.push('selected');
-  if (opts.bust) classes.push('bust');
-  const action = opts.index !== undefined && !opts.disabled ? `data-action="die" data-index="${opts.index}"` : '';
-  return `<button class="${classes.join(' ')}" ${action} ${opts.index === undefined || opts.disabled ? 'disabled' : ''} aria-label="die showing ${face}">${DIE_FACES[face - 1]}</button>`;
+/** Fixed-limit bet/raise increment for the street (DESIGN.md §3), for labels. */
+function increment(hand: HandState): number {
+  return hand.street === 'turn' || hand.street === 'river' ? 2 * hand.bigBlind : hand.bigBlind;
 }
 
-function scoreboard(): string {
-  const { game } = app.state;
-  const card = (player: number, name: string): string => {
-    const active = game.current === player && game.phase !== 'gameOver';
-    return `
-      <div class="player ${active ? 'active' : ''}">
-        <div class="player-name">${name}</div>
-        <div class="player-score">${fmt(game.banked[player])}</div>
-        <div class="turn-total">${active && game.turnTotal > 0 ? `+${fmt(game.turnTotal)} this turn` : '&nbsp;'}</div>
-      </div>`;
-  };
-  return `<div class="scoreboard">${card(HUMAN, 'You')}<div class="vs">first to ${fmt(game.target)}</div>${card(AI, 'AI')}</div>`;
+function die(face: number | null, opts: { hidden?: boolean } = {}): string {
+  if (opts.hidden) return `<span class="die back" aria-label="hidden die">?</span>`;
+  if (face === null) return `<span class="die empty" aria-hidden="true"></span>`;
+  return `<span class="die" aria-label="die showing ${face}">${DIE_FACES[face - 1]}</span>`;
 }
 
-function endgameBanner(): string {
-  const { game } = app.state;
-  if (game.endgameTriggeredBy === null || game.phase === 'gameOver') return '';
-  const text =
-    game.current === HUMAN
-      ? `Final turn! Beat the AI's ${fmt(game.banked[AI])} to win.`
-      : `AI's last chance — it must beat your ${fmt(game.banked[HUMAN])}.`;
-  return `<div class="banner">${text}</div>`;
+function holeDice(seat: number): string {
+  const { hand, revealAi } = game.state;
+  const hidden = seat === AI && !revealAi;
+  const dice = hand.players[seat].hole.map((f) => die(hidden ? null : f, { hidden })).join('');
+  return `<div class="dice hole">${dice}</div>`;
 }
 
-function diceArea(): string {
-  const { game, selected, flashDice, aiTurnRunning } = app.state;
-
-  if (game.phase === 'gameOver') {
-    const dice = flashDice ? `<div class="dice">${flashDice.map((f) => die(f, { bust: true })).join('')}</div>` : '';
-    return `
-      ${dice}
-      <div class="game-over">
-        <h2>${game.winner === HUMAN ? 'You win! 🎉' : 'The AI wins this one.'}</h2>
-        <p>Final score — You: <strong>${fmt(game.banked[HUMAN])}</strong> · AI: <strong>${fmt(game.banked[AI])}</strong></p>
-        <button class="button primary" data-action="restart">Play again</button>
-      </div>`;
-  }
-
-  if (aiTurnRunning) {
-    const dice =
-      game.phase === 'select'
-        ? game.rolled.map((f, i) => die(f, { selected: selected.has(i), disabled: true })).join('')
-        : (flashDice ?? []).map((f) => die(f, { bust: true })).join('');
-    return `
-      <div class="dice">${dice}</div>
-      <p class="hint">AI is playing… (${game.diceInHand} dice in hand)</p>`;
-  }
-
-  if (game.phase === 'select') {
-    const points = selectionPoints(game.rolled, selected);
-    const dice = game.rolled
-      .map((f, i) =>
-        die(f, { index: i, selected: selected.has(i), disabled: !isDieSelectable(game.rolled, i) }),
-      )
-      .join('');
-    const keepLabel =
-      points !== null ? `Keep ${selected.size} ${selected.size === 1 ? 'die' : 'dice'} (+${fmt(points)})` : 'Keep selected dice';
-    const hint =
-      points !== null
-        ? 'Locked-in dice score now; fewer dice left means a bigger bust risk next roll.'
-        : selected.size === 0
-          ? 'Bright dice score — click at least one to keep it. Dim dice never score.'
-          : 'That combination doesn’t score — 1s, 5s, or exactly three of a kind.';
-    return `
-      <div class="dice">${dice}</div>
-      <div class="actions"><button class="button primary" data-action="keep" ${points === null ? 'disabled' : ''}>${keepLabel}</button></div>
-      <p class="hint">${hint}</p>`;
-  }
-
-  // phase 'roll' or 'decide' on the human's turn
-  const bustDice = (flashDice ?? []).map((f) => die(f, { bust: true })).join('');
-  const canBank = game.phase === 'decide';
-  const hot = isHotDice(game);
+function playerPanel(seat: number): string {
+  const { hand } = game.state;
+  const p = hand.players[seat];
+  const active = hand.toAct === seat && hand.street !== 'complete';
+  const isButton = hand.button === seat;
+  const name = seat === HUMAN ? 'You' : 'AI';
+  const committed = p.committed > 0 ? `<span class="committed">bet ${p.committed}</span>` : '';
+  const flags = [
+    isButton ? '<span class="tag button-tag" title="Dealer button / small blind">BTN</span>' : '',
+    p.folded ? '<span class="tag folded">folded</span>' : '',
+    p.allIn ? '<span class="tag allin">all-in</span>' : '',
+  ].join('');
   return `
-    ${bustDice ? `<div class="dice">${bustDice}</div>` : ''}
-    ${hot ? '<div class="banner hot">🔥 Hot dice — every die scored, all 6 are back!</div>' : ''}
-    <div class="actions">
-      <button class="button primary" data-action="roll">Roll ${game.diceInHand} dice</button>
-      ${canBank ? `<button class="button" data-action="bank">Bank ${fmt(game.turnTotal)} points</button>` : ''}
-    </div>
-    <p class="hint">${
-      canBank
-        ? `Banking keeps your ${fmt(game.turnTotal)} points safe. Rolling ${game.diceInHand} ${game.diceInHand === 1 ? 'die' : 'dice'} busts about ${Math.round(bustProbability(game.diceInHand) * 100)}% of the time.`
-        : 'Roll all six dice to start your turn.'
-    }</p>`;
+    <div class="seat ${active ? 'active' : ''} ${seat === AI ? 'ai' : 'human'}">
+      <div class="seat-head">
+        <span class="seat-name">${name} ${flags}</span>
+        <span class="stack">${p.stack} <small>chips</small></span>
+      </div>
+      ${holeDice(seat)}
+      ${committed}
+    </div>`;
 }
 
-function rules(): string {
+function boardRow(): string {
+  const { hand } = game.state;
+  const slots: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    if (i < hand.revealed) slots.push(die(hand.boardFull[i]));
+    else slots.push(die(null, { hidden: true }));
+  }
+  const label = hand.street === 'complete' ? 'Board' : streetLabel(hand);
   return `
-    <details class="rules" open>
-      <summary>How to play</summary>
-      <p>Roll, keep scoring dice, then <strong>bank</strong> your points or <strong>roll again</strong> with the
-      dice you didn't keep. A roll with no scoring dice is a <strong>bust</strong>: your unbanked turn points are
-      gone. First to bank ${fmt(app.state.game.target)} triggers the opponent's one final turn — highest score wins.</p>
-      <table>
-        <tr><td>Single ⚀</td><td>100</td><td>Single ⚄</td><td>50</td></tr>
-        <tr><td>Three ⚀⚀⚀</td><td>1,000</td><td>Three of a kind</td><td>face × 100</td></tr>
-      </table>
-      <p>Keep all six as scorers and they all come back — <strong>hot dice</strong>, same turn, keep going.</p>
-    </details>`;
+    <div class="board">
+      <div class="board-label">${label}</div>
+      <div class="dice board-dice">${slots.join('')}</div>
+      <div class="pot">Pot <strong>${pot(hand)}</strong></div>
+    </div>`;
+}
+
+function streetLabel(hand: HandState): string {
+  switch (hand.street) {
+    case 'preflop':
+      return 'Pre-flop';
+    case 'flop':
+      return 'Flop';
+    case 'turn':
+      return 'Turn';
+    case 'river':
+      return 'River';
+    default:
+      return 'Board';
+  }
+}
+
+function controls(): string {
+  const { hand, match, aiThinking } = game.state;
+
+  if (match.over) {
+    return `
+      <div class="actions end">
+        <button class="btn primary" data-action="restart">Play again</button>
+      </div>`;
+  }
+  if (hand.street === 'complete') {
+    return `
+      <div class="actions end">
+        <button class="btn primary" data-action="next">Next hand</button>
+      </div>`;
+  }
+  if (aiThinking || hand.toAct !== HUMAN) {
+    return `<div class="actions"><p class="waiting">${aiThinking ? 'AI is thinking…' : 'Waiting…'}</p></div>`;
+  }
+
+  const toCall = game.toCall();
+  const inc = increment(hand);
+  const buttons = game
+    .humanActions()
+    .map((a) => {
+      let label = ACTION_LABEL[a];
+      if (a === 'call') label = `Call ${toCall}`;
+      else if (a === 'bet') label = `Bet ${inc}`;
+      else if (a === 'raise') label = `Raise to ${hand.betToMatch + inc}`;
+      const cls = a === 'fold' ? 'btn danger' : a === 'check' || a === 'call' ? 'btn' : 'btn primary';
+      return `<button class="${cls}" data-action="act" data-type="${a}">${label}</button>`;
+    })
+    .join('');
+  return `<div class="actions">${buttons}</div>`;
 }
 
 function render(): void {
+  const { message, log, match } = game.state;
   root.innerHTML = `
     <main class="game">
       <h1>Roll'Em</h1>
-      ${scoreboard()}
-      ${endgameBanner()}
-      <p class="message">${app.state.message}</p>
-      <section class="table">${diceArea()}</section>
-      ${rules()}
+      <p class="subtitle">Heads-up dice poker · blinds ${match.smallBlind}/${match.bigBlind} · hand ${match.handsPlayed + 1}</p>
+      ${playerPanel(AI)}
+      ${boardRow()}
+      ${playerPanel(HUMAN)}
+      <p class="message">${message}</p>
+      ${controls()}
+      <details class="log"><summary>Hand log</summary><ul>${log.map((l) => `<li>${l}</li>`).join('')}</ul></details>
+      <details class="rules">
+        <summary>How to play</summary>
+        <p>Texas hold'em with dice. You hold <strong>2 hidden dice</strong>; five shared
+        <strong>board dice</strong> come out across the flop, turn and river. Bet across four rounds
+        on who makes the best seven-dice combination.</p>
+        <p><strong>The twist — rankings invert:</strong> rarer shapes win. A Full House is the
+        <em>weakest</em> payable hand; Two Pairs beats it, Trips beat a straight, and so on up to
+        Seven of a Kind.</p>
+        <p>Win the AI's whole stack to take the match.</p>
+      </details>
     </main>`;
 }
 
 root.addEventListener('click', (event) => {
-  const target = (event.target as HTMLElement).closest<HTMLElement>('[data-action]');
-  if (!target) return;
-  switch (target.dataset.action) {
-    case 'roll':
-      void app.roll();
+  const el = (event.target as HTMLElement).closest<HTMLElement>('[data-action]');
+  if (!el) return;
+  switch (el.dataset.action) {
+    case 'act':
+      void game.act(el.dataset.type as never);
       break;
-    case 'keep':
-      app.keep();
-      break;
-    case 'bank':
-      void app.bank();
+    case 'next':
+      void game.nextHand();
       break;
     case 'restart':
-      app.restart();
-      break;
-    case 'die':
-      app.toggleDie(Number(target.dataset.index));
+      game.restart();
       break;
   }
 });
 
-app.onChange(render);
+game.onChange(render);
 render();
+void game.start();

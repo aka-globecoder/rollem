@@ -1,7 +1,10 @@
 # Roll'Em
 
-A push-your-luck dice game playable in the browser. Fast rounds, simple rules,
-tense keep-rolling-or-bank decisions.
+**Dice poker** — Texas hold'em played with dice — in the browser. Heads-up: one
+human against an AI. Two hidden dice each, five shared board dice across the
+flop/turn/river, and four betting rounds. The twist: with seven dice the hand
+rankings **invert**, so rarer shapes win (a Full House is the *weakest* payable
+hand, up to Seven of a Kind at the top).
 
 ## Stack
 
@@ -9,19 +12,19 @@ tense keep-rolling-or-bank decisions.
 - [TypeScript](https://www.typescriptlang.org/) — strict mode
 - [Vitest](https://vitest.dev/) — test runner
 
-No framework: the game engine is pure TypeScript (`src/engine/`), the game
-flow is a headless controller (`src/ui/app.ts`), and the DOM layer
-(`src/main.ts`) is a render-from-state view — so the whole game is testable
-without a browser.
+No framework: the game logic is pure TypeScript (`src/engine/`), the game flow
+is a headless controller (`src/ui/table.ts`), and the DOM layer (`src/main.ts`)
+is a render-from-state view — so the whole game is testable without a browser.
 
 ## How to play
 
-You vs. the AI, first to bank 2,000 points. Roll six dice, click the scoring
-dice you want to keep (1s = 100, 5s = 50, three of a kind = face × 100, three
-1s = 1,000), then **bank** your turn total or **roll again** with the rest. A
-roll with no scoring dice is a bust: unbanked points are gone. Keep all six as
-scorers and they come back (*hot dice*). When someone banks 2,000+, the
-opponent gets one final turn to beat them.
+You vs. the AI, fixed-limit betting, 100 chips each, blinds 1/2 (they escalate
+so a match lasts a few minutes). You hold two hidden dice; five board dice are
+revealed across the flop (3), turn (1) and river (1). Each betting round you
+**check/bet/call/raise/fold**. At showdown the best seven-dice combination wins
+the pot — remember the rankings are inverted (rarer beats commoner). Win the
+AI's whole stack to take the match. The AI's dice stay hidden unless the hand
+reaches a showdown.
 
 ## Getting started
 
@@ -45,9 +48,9 @@ npm run preview      # serve the production build locally
 
 ```
 index.html            Vite entry point
-src/main.ts           DOM view: renders ui/app.ts state, forwards clicks
+src/main.ts           DOM view: renders ui/table.ts state, forwards clicks
 src/style.css         All styling (no framework)
-src/ui/               Headless game-flow controller + selection helpers
+src/ui/table.ts       Headless table controller (drives the engine + AI, paces turns)
 src/engine/           Pure game logic. Fully unit-tested. No DOM imports.
 src/**/*.test.ts      Tests live next to the code they cover.
 .github/workflows/    CI: npm ci, test, build on every push/PR.
@@ -56,23 +59,26 @@ src/**/*.test.ts      Tests live next to the code they cover.
 ### Engine modules (`src/engine/`)
 
 The rules implemented here are exactly those in the project design doc
-(`DESIGN.md`, one level above this repo).
+(`DESIGN.md`, at the repo root).
 
 | Module        | Responsibility                                                        |
 |---------------|-----------------------------------------------------------------------|
 | `dice.ts`     | Die/dice rolling with an injectable `Rng`                             |
-| `rng.ts`      | `mulberry32` seedable PRNG for tests and reproducible simulations     |
-| `scoring.ts`  | Scoring table, bust detection, set-aside legality (§3)                |
-| `game.ts`     | Turn/state machine: roll → set aside → bank-or-roll, hot dice, endgame, tie-break (§2, §4) |
-| `ai.ts`       | Deterministic opponent: greedy set-aside + ordered bank-or-roll heuristics (§5) |
-| `simulate.ts` | Plays complete seeded AI-vs-AI games engine-only                      |
+| `rng.ts`      | `mulberry32` seedable PRNG for tests and reproducible play            |
+| `handEval.ts` | 7-dice hand evaluator + comparator; the inverted 15-category ranking (§5–§6) |
+| `hand.ts`     | One hand: deal → flop/turn/river betting → showdown; fixed-limit rules, all-in refunds (§3–§7) |
+| `match.ts`    | Match layer: chip stacks, button rotation, escalating blinds, elimination (§2, §7, §9) |
+| `pokerAi.ts`  | Equity-based opponent: exact win-probability enumeration + pot-odds policy (§8) |
 
-Typical flow: `newGame()` → `roll(state, rng)` → `setAside(state, indices)` →
-`bank(state)` or `roll` again. All actions are pure (state in, new state out)
-and throw on illegal moves, so the UI can lean on the engine for validation.
+Typical flow: `createMatch()` → `beginHand(match, rng)` → `applyAction(hand,
+{type})` per betting decision → `settleHand(match, hand)` to fold stacks back
+and deal on. All actions are pure (state in, new state out) and throw on illegal
+moves, so the UI leans on the engine for validation.
 
 ## Engineering conventions
 
-- Game rules and scoring live in `src/engine/` as pure functions with an
-  injectable RNG (`Rng` type) so every rule is deterministic under test.
+- Game rules live in `src/engine/` as pure functions with an injectable RNG
+  (`Rng` type) so every rule is deterministic under test.
 - Every engine module gets a test file. Rules bugs kill trust in a dice game.
+- The UI controller is headless and testable: inject `rng` + `delay` and drive a
+  whole match with no DOM (see `src/ui/table.test.ts`).
