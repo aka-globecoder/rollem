@@ -250,7 +250,7 @@ describe('showdown award + tie split', () => {
       s = applyAction(s, { type: legal.includes('call') ? 'call' : legal[0] });
     }
     expect(s.result?.winners).toEqual([0, 1]);
-    expect(s.result?.potAwarded % 2).toBe(0); // matched pot always even heads-up
+    expect(s.result!.potAwarded % 2).toBe(0); // matched pot always even heads-up
     expect(s.players[0].stack + s.players[1].stack).toBe(105);
   });
 });

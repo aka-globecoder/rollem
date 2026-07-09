@@ -1,10 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  HandCategory,
-  evaluateHand,
-  compareHands,
-  compareDice,
-} from './handEval';
+import { HandCategory, evaluateHand, compareDice } from './handEval';
 
 const cat = (dice: number[]) => evaluateHand(dice).category;
 
@@ -119,7 +114,7 @@ describe('exhaustive enumeration — matches DESIGN.md §5 probabilities', () =>
 
     expect(total).toBe(TOTAL);
     let summed = 0;
-    for (const [c, count] of tally) summed += count;
+    for (const [, count] of tally) summed += count;
     expect(summed).toBe(TOTAL);
 
     for (const key of Object.keys(expectedPct)) {
